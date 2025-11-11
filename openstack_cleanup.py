@@ -1,18 +1,4 @@
 #!/usr/bin/env python3
-# Copyright 2016 Cisco Systems, Inc.  All rights reserved.
-#
-#    Licensed under the Apache License, Version 2.0 (the "License"); you may
-#    not use this file except in compliance with the License. You may obtain
-#    a copy of the License at
-#
-#         http://www.apache.org/licenses/LICENSE-2.0
-#
-#    Unless required by applicable law or agreed to in writing, software
-#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-#    License for the specific language governing permissions and limitations
-#    under the License.
-#
 
 ###############################################################################
 #                                                                             #
@@ -24,6 +10,7 @@
 #                                                                             #
 # Usage examples:                                                             #
 #     $ python3 openstack_cleanup.py --filter ".*test-cluster.*" --dryrun     #
+#     $ python3 openstack_cleanup.py --cloud production --dryrun              #
 #     $ python3 openstack_cleanup.py --file resource_list.log                 #
 #     $ python3 openstack_cleanup.py -r openrc.sh --yes                       #
 #                                                                             #
@@ -35,15 +22,15 @@
 #                                                                             #
 ###############################################################################
 
-# ======================================================
-#                        WARNING
-# ======================================================
-# IMPORTANT FOR PRODUCTION ENVIRONMENTS
-#
-# ALWAYS USE --dryrun FIRST TO VERIFY WHICH RESOURCES
-# WILL BE DELETED. DOUBLE CHECK RESOURCE NAMES MATCH
-# YOUR INTENDED PATTERN ONLY.
-# ======================================================
+# ====================================================== #
+#                        WARNING                         #
+# ====================================================== #
+# IMPORTANT FOR PRODUCTION ENVIRONMENTS                  #
+#                                                        #
+# ALWAYS USE --dryrun FIRST TO VERIFY WHICH RESOURCES    #
+# WILL BE DELETED. DOUBLE CHECK RESOURCE NAMES MATCH     #
+# YOUR INTENDED PATTERN ONLY.                            #
+# ====================================================== #
 
 from abc import ABCMeta, abstractmethod
 import argparse
@@ -72,20 +59,22 @@ DEFAULT_LB_RETRY_DELAY = 10
 DEFAULT_ROUTER_FIP_WAIT = 5
 DEFAULT_INSTANCE_DELETE_RETRIES = 30
 
-# ============================================================================
-# Credentials - handling OpenStack authentication the easy way
-# ============================================================================
+# ============================================================================ #
+# Credentials - handling OpenStack authentication the easy way                 #
+# ============================================================================ #
 
 class Credentials:
     """Dead simple credentials class that just uses OpenStack SDK's built-in auth."""
     
-    def __init__(self, openrc_file=None):
-        """Set up credentials from openrc file or environment.
+    def __init__(self, openrc_file=None, cloud_name=None):
+        """Set up credentials from openrc file, clouds.yaml, or environment.
         
         Args:
             openrc_file: Path to OpenRC file (optional)
+            cloud_name: Name of cloud in clouds.yaml (optional)
         """
         self.openrc_file = openrc_file
+        self.cloud_name = cloud_name
         self.rc_auth_url = None
         
         # Load openrc file if we have one
@@ -94,9 +83,10 @@ class Credentials:
         elif openrc_file:
             print(f'Error: rc file does not exist {openrc_file}')
             return
-            
-        # Quick sanity check
-        self._validate_auth()
+        
+        # Quick sanity check (skip if using clouds.yaml)
+        if not cloud_name:
+            self._validate_auth()
     
     def _load_openrc_file(self, openrc_file):
         """Parse openrc file and load environment variables."""
@@ -117,6 +107,10 @@ class Credentials:
     
     def _validate_auth(self):
         """Make sure we have the basics for authentication."""
+        # If using clouds.yaml, let SDK validate
+        if self.cloud_name:
+            return True
+            
         # Need auth URL no matter what
         self.rc_auth_url = os.environ.get('OS_AUTH_URL')
         
@@ -142,12 +136,19 @@ class Credentials:
             keystoneauth1.session.Session: Ready to use session
         """
         try:
-            # Let the SDK figure out the auth details
-            # It handles everything: app creds, passwords, tokens, clouds.yaml, etc.
-            conn = openstack.connect()
+            # If we have a specific cloud name, use it
+            if self.cloud_name:
+                conn = openstack.connect(cloud=self.cloud_name)
+            else:
+                # Let the SDK figure out the auth details
+                # It handles everything: app creds, passwords, tokens, clouds.yaml, etc.
+                conn = openstack.connect()
             return conn.session
         except Exception as e:
             print(f'Failed to create OpenStack session: {e}')
+            if self.cloud_name:
+                print(f"Make sure cloud '{self.cloud_name}' exists in your clouds.yaml")
+                print("Expected locations: ~/.config/openstack/clouds.yaml or ./clouds.yaml")
             raise
 
 # Global regex pattern for matching resource names
@@ -1166,6 +1167,10 @@ def main():
                         action='store', required=False,
                         help='openrc file',
                         metavar='<file>')
+    parser.add_argument('-c', '--cloud', dest='cloud',
+                        action='store', required=False,
+                        help='cloud name from clouds.yaml',
+                        metavar='<cloud-name>')
     parser.add_argument('-f', '--file', dest='file',
                         action='store', required=False,
                         help='get resources to delete from cleanup log file '
@@ -1186,6 +1191,12 @@ def main():
                         help='automatic yes to prompts; assume "yes" as answer to all prompts')
     opts = parser.parse_args()
 
+    # Validate mutual exclusivity
+    if opts.rc and opts.cloud:
+        print("❌ ERROR: Cannot use both --rc and --cloud options together")
+        print("   Use either --rc for openrc file OR --cloud for clouds.yaml")
+        return 1
+
     print("🧹 OpenStack Resource Cleanup Tool")
     print("=" * 50)
     if opts.dryrun:
@@ -1200,20 +1211,30 @@ def main():
         print(f"Filter: '{opts.filter}'")
     else:
         print("Filter: '.*test-cluster.*' (default, use --filter to change)")
+        
+    if opts.cloud:
+        print(f"Authentication: clouds.yaml cloud '{opts.cloud}'")
+    elif opts.rc:
+        print(f"Authentication: openrc file '{opts.rc}'")
+    else:
+        print("Authentication: environment variables or default cloud")
     print()
 
-    cred = Credentials(opts.rc)
+    cred = Credentials(opts.rc, opts.cloud)
     
     # Check if credentials are properly configured
-    if not cred.rc_auth_url:
+    if not opts.cloud and not cred.rc_auth_url:
         print("❌ ERROR: Missing OpenStack authentication configuration!")
         print()
         print("You need to provide authentication credentials in one of these ways:")
         print()
-        print("1. Use an openrc file:")
+        print("1. Use clouds.yaml (recommended):")
+        print("   python3 openstack_cleanup.py --cloud my-cloud --dryrun")
+        print()
+        print("2. Use an openrc file:")
         print("   python3 openstack_cleanup.py -r openrc.sh --dryrun")
         print()
-        print("2. Set environment variables:")
+        print("3. Set environment variables:")
         print("   export OS_AUTH_URL=https://your-openstack.com:5000/v3")
         print("   export OS_IDENTITY_API_VERSION=3")
         print("   # Then either:")
@@ -1224,6 +1245,11 @@ def main():
         print("   export OS_PROJECT_NAME=your-project")
         print("   export OS_PROJECT_DOMAIN_NAME=default")
         print("   export OS_USER_DOMAIN_NAME=default")
+        print()
+        print("For clouds.yaml setup, create one of:")
+        print("   ./clouds.yaml (current directory)")
+        print("   ~/.config/openstack/clouds.yaml (user config)")
+        print("   /etc/openstack/clouds.yaml (system-wide)")
         print()
         print("For detailed authentication setup instructions, see OpenStack documentation.")
         return 1

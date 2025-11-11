@@ -9,7 +9,7 @@ A comprehensive Python tool for safely cleaning up OpenStack resources based on 
 - **Comprehensive coverage** - Handles compute, storage, network, load balancer, and advanced services
 - **Smart dependency handling** - Deletes resources in the correct order to avoid conflicts
 - **Progress monitoring** - Tracks deletion progress and verifies completion
-- **Multiple authentication methods** - Supports app credentials, username/password, and openrc files
+- **Multiple authentication methods** - Supports clouds.yaml, app credentials, username/password, and openrc files
 - **Safety prompts** - Confirms destructive operations unless auto-approved
 
 ## 🚀 Quick Start
@@ -22,12 +22,23 @@ pip install openstacksdk tabulate
 
 ### 2. Set up Authentication
 
-**Option A: Using OpenRC file**
+**Option A: Using clouds.yaml (recommended)**
+
+Create a `clouds.yaml` file in one of these locations:
+- `./clouds.yaml` (current directory)
+- `~/.config/openstack/clouds.yaml` (user config)
+- `/etc/openstack/clouds.yaml` (system-wide)
+
+```bash
+python3 openstack_cleanup.py --cloud my-cloud --dryrun
+```
+
+**Option B: Using OpenRC file**
 ```bash
 python3 openstack_cleanup.py -r openrc.sh --dryrun
 ```
 
-**Option B: Environment variables**
+**Option C: Environment variables**
 ```bash
 export OS_AUTH_URL=https://your-openstack.com:5000/v3
 export OS_IDENTITY_API_VERSION=3
@@ -60,32 +71,33 @@ python3 openstack_cleanup.py --filter ".*test-cluster.*" --yes
 ### Development Environment Cleanup
 ```bash
 # Clean up all resources with "dev" in the name
-python3 openstack_cleanup.py --filter ".*dev.*" --dryrun
-python3 openstack_cleanup.py --filter ".*dev.*" --yes
+python3 openstack_cleanup.py --cloud development --filter ".*dev.*" --dryrun
+python3 openstack_cleanup.py --cloud development --filter ".*dev.*" --yes
 ```
 
 ### CI/CD Pipeline Cleanup
 ```bash
 # Clean up build artifacts
-python3 openstack_cleanup.py --filter ".*build-[0-9]+.*" --yes
+python3 openstack_cleanup.py --cloud ci-environment --filter ".*build-[0-9]+.*" --yes
 ```
 
 ### Targeted Resource Cleanup
 ```bash
 # Clean up specific project resources
-python3 openstack_cleanup.py --filter ".*project-alpha.*" --dryrun
+python3 openstack_cleanup.py --cloud production --filter ".*project-alpha.*" --dryrun
 ```
 
 ### Using Resource List File
 ```bash
 # Use pre-defined resource list (format: type|name|id per line)
-python3 openstack_cleanup.py --file resource_list.log --dryrun
+python3 openstack_cleanup.py --cloud my-cloud --file resource_list.log --dryrun
 ```
 
 ## 🛠️ Command Line Options
 
 | Option | Description | Example |
 |--------|-------------|---------|
+| `-c, --cloud` | Cloud name from clouds.yaml | `--cloud production` |
 | `-r, --rc` | OpenRC credentials file | `-r openrc.sh` |
 | `-f, --file` | Resource list file (type\|name\|id format) | `-f cleanup.log` |
 | `-d, --dryrun` | Preview mode - don't delete anything | `--dryrun` |
@@ -93,6 +105,38 @@ python3 openstack_cleanup.py --file resource_list.log --dryrun
 | `-y, --yes` | Auto-approve without prompts | `--yes` |
 
 ## 🔧 Authentication Methods
+
+### clouds.yaml (Recommended)
+
+Create `clouds.yaml` in your project directory, user config, or system-wide:
+
+**Locations (in order of precedence):**
+- `./clouds.yaml` (current directory)
+- `~/.config/openstack/clouds.yaml` (user config)
+- `/etc/openstack/clouds.yaml` (system-wide)
+
+**Example clouds.yaml:**
+```yaml
+clouds:
+  production:
+    auth:
+      auth_url: https://openstack.production.com:5000/v3
+      application_credential_id: your-app-credential-id
+      application_credential_secret: your-app-credential-secret
+    identity_api_version: 3
+    region_name: RegionOne
+
+  development:
+    auth:
+      auth_url: https://openstack.dev.com:5000/v3
+      username: your-username
+      password: your-password
+      project_name: your-project-name
+      user_domain_name: Default
+      project_domain_name: Default
+    identity_api_version: 3
+    region_name: RegionOne
+```
 
 ### Application Credentials (Recommended)
 ```bash
