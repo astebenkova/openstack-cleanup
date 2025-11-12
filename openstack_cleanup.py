@@ -1014,15 +1014,11 @@ class AdvancedServicesCleaner(AbstractCleaner):
         if self.available_services.get('heat'):
             def stacks_fetcher():
                 all_stacks = list(self.conn.orchestration.stacks())
-                # Filter for only Active stacks and ensure uniqueness by stack ID
-                unique_active_stacks = {}
+                # Include all stacks regardless of status and ensure uniqueness by stack ID
+                unique_stacks = {}
                 for stack in all_stacks:
-                    # Only include stacks with ACTIVE status
-                    if hasattr(stack, 'status') and stack.status == 'CREATE_COMPLETE':
-                        unique_active_stacks[stack.id] = stack
-                    elif hasattr(stack, 'stack_status') and stack.stack_status == 'CREATE_COMPLETE':
-                        unique_active_stacks[stack.id] = stack
-                return list(unique_active_stacks.values())
+                    unique_stacks[stack.id] = stack
+                return list(unique_stacks.values())
             res_desc['heat_stacks'] = [stacks_fetcher]
             
         # VPN services are not supported in this SDK-only version
