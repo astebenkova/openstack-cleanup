@@ -646,26 +646,6 @@ class NetworkCleaner(AbstractCleaner):
             else:
                 self.report_error('FLOATING IP', fip_ip, str(e))
 
-    def _delete_floating_ip(self, fip, reason=""):
-        """Helper method to delete a floating IP with consistent reporting."""
-        fip_id = fip.id
-        fip_ip = fip.floating_ip_address
-        fip_description = getattr(fip, 'description', '') or ''
-        
-        try:
-            if self.dryrun:
-                description_info = f" (desc: {fip_description[:DEFAULT_DESCRIPTION_TRUNCATE_LENGTH]}...)" if fip_description else ""
-                self.report_deletion('FLOATING IP', f"{fip_ip}{description_info}")
-            else:
-                self.conn.network.delete_ip(fip_id)
-                description_info = f" (desc: {fip_description[:DEFAULT_DESCRIPTION_TRUNCATE_LENGTH]}...)" if fip_description else ""
-                self.report_deletion('FLOATING IP', f"{fip_ip}{description_info}")
-        except Exception as e:
-            if is_not_found_error(e):
-                self.report_not_found('FLOATING IP', fip_ip)
-            else:
-                self.report_error('FLOATING IP', fip_ip, str(e))
-
     def clean(self):
         print('*** NETWORK cleanup')
         global resource_name_re
