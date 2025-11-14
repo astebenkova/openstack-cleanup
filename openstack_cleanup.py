@@ -405,7 +405,7 @@ class StorageCleaner(AbstractCleaner):
                         self.conn.block_storage.get_volume(id)
                         self.report_deletion('VOLUME', name)
                     else:
-                        self.conn.block_storage.delete_volume(id, force=True)
+                        self.conn.block_storage.delete_volume(id)
                         self.report_deletion('VOLUME', name)
                 except os_exceptions.ResourceNotFound:
                     self.report_not_found('VOLUME', name)
